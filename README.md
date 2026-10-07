@@ -99,6 +99,62 @@ Open the health endpoint:
 curl http://localhost:8088/health
 ```
 
+### DGX Spark / GB10 bootstrap
+
+An OEM DGX Spark was tested with PyTorch `2.10.0+cu128` (CUDA 12.8).
+Basic GPU calculations succeeded, but the normal server startup followed by
+a speech request failed during DACVAE initialization with:
+
+```text
+RuntimeError: nvrtc: error: invalid value for --gpu-architecture (-arch)
+```
+
+To bypass the failing TorchScript compilation path, stop the server and
+restart it from the repository root with these process-local settings:
+
+```bash
+PYTORCH_JIT=0 IRODORI_COMPILE_MODEL=false \
+  uv run --no-sync python -m irodori_openai_tts \
+  --host 127.0.0.1 --port 8088
+```
+
+`PYTORCH_JIT=0` disables TorchScript scripting and tracing; it does not move
+the model to the CPU. `IRODORI_COMPILE_MODEL=false` disables the separate
+`torch.compile` option. This is a bootstrap workaround and may affect speed.
+
+From another terminal on the same host, test a short text-only request:
+
+```bash
+curl --fail-with-body http://127.0.0.1:8088/v1/audio/speech \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "irodori-tts",
+    "input": "こんにちは。音声合成の動作確認です。",
+    "voice": "none",
+    "response_format": "wav",
+    "irodori": {
+      "caption": "落ち着いた声。自然で丁寧な話し方。"
+    }
+  }' \
+  --output smoke-no-jit.wav
+```
+
+The operator confirmed that this request completed and that the saved WAV
+could be played after copying it to a local computer. For an SSH session,
+run the following on the local computer, replacing the host and absolute
+remote file path:
+
+```bash
+scp SSH_HOST:/absolute/path/to/smoke-no-jit.wav .
+```
+
+The response took about 29 seconds, including possible first-request loading
+overhead; this is not a steady-state inference benchmark. Reading accuracy,
+audio quality, performance, and other GPU/backend configurations have not
+been evaluated. `/health` alone does not load the model or verify synthesis.
+On an HTTP error, the output file may contain the error response instead of
+audio.
+
 ## Docker
 
 Create `.env` first:
