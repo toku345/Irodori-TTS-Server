@@ -53,6 +53,7 @@ conflicts = [
         { extra = "rocm" },
     ],
 ]
+no-build = false
 
 [tool.uv.sources]
 torch = [
